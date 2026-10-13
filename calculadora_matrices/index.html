@@ -1,0 +1,514 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Calculadora de Matrices</title>
+<style>
+  :root {
+    --verde: #217346;
+    --verde-oscuro: #14512f;
+    --borde: #c7cbd1;
+    --header-bg: #21734615;
+    --fondo: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", Calibri, Arial, sans-serif;
+    background: var(--fondo);
+    color: #1f2328;
+  }
+  header {
+    background: var(--verde);
+    color: white;
+    padding: 14px 24px;
+  }
+  header h1 { margin: 0; font-size: 20px; }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .panel {
+    background: white;
+    border: 1px solid var(--borde);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: var(--verde-oscuro);
+    border-bottom: 2px solid var(--verde);
+    padding-bottom: 6px;
+  }
+  .fila-controles {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: end;
+    margin-bottom: 12px;
+  }
+  .campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .campo input, .campo select {
+    padding: 6px 8px;
+    border: 1px solid var(--borde);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .campo input[type="number"] { width: 70px; }
+  button {
+    background: var(--verde);
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: var(--verde-oscuro); }
+  button.secundario {
+    background: white;
+    color: var(--verde-oscuro);
+    border: 1px solid var(--verde);
+  }
+  button.secundario:hover { background: var(--header-bg); }
+
+  /* --- cuadrícula estilo Excel --- */
+  .hoja-wrap { overflow: auto; max-width: 100%; }
+  table.hoja {
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.hoja th, table.hoja td {
+    border: 1px solid var(--borde);
+    padding: 0;
+    min-width: 56px;
+    height: 28px;
+    text-align: center;
+  }
+  table.hoja th {
+    background: #e8eaed;
+    color: #444;
+    font-weight: 600;
+    user-select: none;
+  }
+  table.hoja th.esquina { background: #dcdfe3; }
+  table.hoja input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    text-align: center;
+    font-size: 13px;
+    font-family: inherit;
+    background: transparent;
+  }
+  table.hoja input:focus {
+    outline: 2px solid var(--verde);
+    outline-offset: -2px;
+    background: #eaf5ee;
+  }
+  table.hoja td.solo-lectura { background: #f8f9fa; color: #333; }
+
+  table.lista {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.lista th, table.lista td {
+    border: 1px solid var(--borde);
+    padding: 6px 8px;
+    text-align: left;
+  }
+  table.lista th { background: #e8eaed; }
+  table.lista td.datos-preview { font-family: monospace; font-size: 12px; color: #555; }
+
+  .mensaje { margin-top: 8px; font-size: 13px; }
+  .mensaje.ok { color: var(--verde-oscuro); }
+  .mensaje.error { color: #b3261e; }
+
+  .op-bloque { margin-bottom: 18px; }
+  .op-bloque:last-child { margin-bottom: 0; }
+  .op-bloque h3 { margin: 0 0 8px; font-size: 14px; color: #333; }
+
+  .resultado-escalar {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--verde-oscuro);
+  }
+
+  .factores {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: start;
+  }
+  .factores h4 { margin: 0 0 4px; font-size: 13px; color: var(--verde-oscuro); }
+  .factores .producto { font-weight: 700; }
+
+  .ancho-completo { grid-column: 1 / -1; }
+  @media (max-width: 850px) {
+    main { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Calculadora de Matrices</h1>
+</header>
+
+<main>
+
+  <!-- Crear matriz -->
+  <section class="panel">
+    <h2>Nueva matriz</h2>
+    <div class="fila-controles">
+      <div class="campo">
+        <label>Nombre</label>
+        <input id="nombre" value="A">
+      </div>
+      <div class="campo">
+        <label>Filas</label>
+        <input id="filas" type="number" min="1" max="10" value="2">
+      </div>
+      <div class="campo">
+        <label>Columnas</label>
+        <input id="columnas" type="number" min="1" max="10" value="2">
+      </div>
+      <button class="secundario" onclick="generarCuadricula()">Generar cuadrícula</button>
+    </div>
+
+    <div class="hoja-wrap" id="cuadricula-container"></div>
+
+    <div class="fila-controles" style="margin-top: 12px;">
+      <button onclick="guardarMatriz()">💾 Guardar matriz</button>
+    </div>
+    <div id="msg-crear" class="mensaje"></div>
+  </section>
+
+  <!-- Matrices guardadas -->
+  <section class="panel">
+    <h2>Matrices guardadas</h2>
+    <div class="fila-controles">
+      <button class="secundario" onclick="cargarMatrices()">🔄 Actualizar lista</button>
+    </div>
+    <table class="lista">
+      <thead>
+        <tr><th>ID</th><th>Nombre</th><th>Dimensión</th><th>Datos</th></tr>
+      </thead>
+      <tbody id="tabla-matrices-body">
+        <tr><td colspan="4">Sin datos todavía</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Operaciones -->
+  <section class="panel ancho-completo">
+    <h2>Operaciones</h2>
+
+    <div class="op-bloque">
+      <h3>➕ Suma de matrices</h3>
+      <div class="fila-controles">
+        <div class="campo">
+          <label>Matriz 1</label>
+          <select id="sel-suma-1"></select>
+        </div>
+        <div class="campo">
+          <label>Matriz 2</label>
+          <select id="sel-suma-2"></select>
+        </div>
+        <button onclick="sumarMatrices()">Sumar</button>
+      </div>
+      <div id="resultado-suma"></div>
+    </div>
+
+    <div class="op-bloque">
+      <h3>🧮 Determinante</h3>
+      <div class="fila-controles">
+        <div class="campo">
+          <label>Matriz</label>
+          <select id="sel-det"></select>
+        </div>
+        <button onclick="calcularDeterminante()">Calcular determinante</button>
+      </div>
+      <div id="resultado-det"></div>
+    </div>
+
+    <div class="op-bloque">
+      <h3>🔁 Transponer</h3>
+      <div class="fila-controles">
+        <div class="campo">
+          <label>Matriz</label>
+          <select id="sel-transp"></select>
+        </div>
+        <button onclick="transponerMatriz()">Transponer</button>
+      </div>
+      <div id="resultado-transp"></div>
+    </div>
+
+    <div class="op-bloque">
+      <h3>🧊 Transformación 3D &nbsp;<small>M = T · Rz · Ry · Rx · S</small></h3>
+      <div class="fila-controles">
+        <div class="campo"><label>tx</label><input id="tf-tx" type="number" step="any" value="0"></div>
+        <div class="campo"><label>ty</label><input id="tf-ty" type="number" step="any" value="0"></div>
+        <div class="campo"><label>tz</label><input id="tf-tz" type="number" step="any" value="0"></div>
+        <div class="campo"><label>rx (°)</label><input id="tf-rx" type="number" step="any" value="0"></div>
+        <div class="campo"><label>ry (°)</label><input id="tf-ry" type="number" step="any" value="0"></div>
+        <div class="campo"><label>rz (°)</label><input id="tf-rz" type="number" step="any" value="0"></div>
+        <div class="campo"><label>s</label><input id="tf-s" type="number" step="any" value="1"></div>
+        <button onclick="calcularTransformacion()">Calcular transformación</button>
+      </div>
+      <div id="resultado-transf"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  // Servida por la propia API (GET /), usa su mismo origen sea cual sea el
+  // puerto publicado. Abierta como archivo local, cae a localhost:8000.
+  const API_URL = location.protocol.startsWith('http') ? location.origin : 'http://localhost:8000';
+  let matricesGuardadas = [];
+
+  function letraColumna(i) {
+    // A, B, C, ... Z, AA, AB, ...
+    let s = '';
+    i += 1;
+    while (i > 0) {
+      const r = (i - 1) % 26;
+      s = String.fromCharCode(65 + r) + s;
+      i = Math.floor((i - 1) / 26);
+    }
+    return s;
+  }
+
+  function generarCuadricula() {
+    const filas = parseInt(document.getElementById('filas').value, 10);
+    const columnas = parseInt(document.getElementById('columnas').value, 10);
+    const cont = document.getElementById('cuadricula-container');
+    cont.innerHTML = '';
+
+    if (!filas || !columnas || filas < 1 || columnas < 1) {
+      cont.textContent = 'Filas y columnas deben ser mayores a 0.';
+      return;
+    }
+
+    const tabla = document.createElement('table');
+    tabla.className = 'hoja';
+
+    const thead = document.createElement('thead');
+    const filaEncabezado = document.createElement('tr');
+    filaEncabezado.innerHTML = '<th class="esquina"></th>' +
+      Array.from({length: columnas}, (_, c) => `<th>${letraColumna(c)}</th>`).join('');
+    thead.appendChild(filaEncabezado);
+    tabla.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (let f = 0; f < filas; f++) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<th>${f + 1}</th>` +
+        Array.from({length: columnas}, (_, c) =>
+          `<td><input type="number" step="any" value="0" data-row="${f}" data-col="${c}"></td>`
+        ).join('');
+      tbody.appendChild(tr);
+    }
+    tabla.appendChild(tbody);
+    cont.appendChild(tabla);
+  }
+
+  function leerCuadricula() {
+    const filas = parseInt(document.getElementById('filas').value, 10);
+    const columnas = parseInt(document.getElementById('columnas').value, 10);
+    const datos = Array.from({length: filas}, () => new Array(columnas).fill(0));
+    document.querySelectorAll('#cuadricula-container input').forEach(input => {
+      const f = parseInt(input.dataset.row, 10);
+      const c = parseInt(input.dataset.col, 10);
+      datos[f][c] = parseFloat(input.value) || 0;
+    });
+    return datos;
+  }
+
+  function renderMatrizSoloLectura(datos) {
+    const tabla = document.createElement('table');
+    tabla.className = 'hoja';
+    const columnas = datos.length ? datos[0].length : 0;
+
+    const thead = document.createElement('thead');
+    const filaEncabezado = document.createElement('tr');
+    filaEncabezado.innerHTML = '<th class="esquina"></th>' +
+      Array.from({length: columnas}, (_, c) => `<th>${letraColumna(c)}</th>`).join('');
+    thead.appendChild(filaEncabezado);
+    tabla.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    datos.forEach((fila, f) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<th>${f + 1}</th>` +
+        fila.map(v => `<td class="solo-lectura">${v}</td>`).join('');
+      tbody.appendChild(tr);
+    });
+    tabla.appendChild(tbody);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'hoja-wrap';
+    wrap.appendChild(tabla);
+    return wrap;
+  }
+
+  function mostrarMensaje(elId, texto, esError = false) {
+    const el = document.getElementById(elId);
+    el.textContent = texto;
+    el.className = 'mensaje ' + (esError ? 'error' : 'ok');
+  }
+
+  async function guardarMatriz() {
+    const nombre = document.getElementById('nombre').value || 'Sin nombre';
+    const datos = leerCuadricula();
+    try {
+      const r = await fetch(`${API_URL}/matrices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, datos })
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : 'Error al guardar');
+      mostrarMensaje('msg-crear', `Matriz "${body.nombre}" guardada con id ${body.id}.`);
+      await cargarMatrices();
+    } catch (e) {
+      mostrarMensaje('msg-crear', e.message, true);
+    }
+  }
+
+  async function cargarMatrices() {
+    try {
+      const r = await fetch(`${API_URL}/matrices`);
+      matricesGuardadas = await r.json();
+      renderTablaMatrices();
+      renderSelects();
+    } catch (e) {
+      document.getElementById('tabla-matrices-body').innerHTML =
+        `<tr><td colspan="4">No se pudo conectar con la API (${e.message})</td></tr>`;
+    }
+  }
+
+  function renderTablaMatrices() {
+    const tbody = document.getElementById('tabla-matrices-body');
+    if (!matricesGuardadas.length) {
+      tbody.innerHTML = '<tr><td colspan="4">Sin datos todavía</td></tr>';
+      return;
+    }
+    tbody.innerHTML = matricesGuardadas.map(m => `
+      <tr>
+        <td>${m.id}</td>
+        <td>${m.nombre}</td>
+        <td>${m.datos.length}×${m.datos[0]?.length ?? 0}</td>
+        <td class="datos-preview">${JSON.stringify(m.datos)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderSelects() {
+    const opciones = matricesGuardadas
+      .map(m => `<option value="${m.id}">#${m.id} — ${m.nombre} (${m.datos.length}×${m.datos[0]?.length ?? 0})</option>`)
+      .join('');
+    ['sel-suma-1', 'sel-suma-2', 'sel-det', 'sel-transp'].forEach(id => {
+      const sel = document.getElementById(id);
+      const actual = sel.value;
+      sel.innerHTML = opciones || '<option value="">— sin matrices —</option>';
+      if ([...sel.options].some(o => o.value === actual)) sel.value = actual;
+    });
+  }
+
+  async function sumarMatrices() {
+    const id1 = document.getElementById('sel-suma-1').value;
+    const id2 = document.getElementById('sel-suma-2').value;
+    const cont = document.getElementById('resultado-suma');
+    if (!id1 || !id2) { cont.innerHTML = '<p class="mensaje error">Elegí dos matrices guardadas.</p>'; return; }
+    try {
+      const r = await fetch(`${API_URL}/operaciones/sumar?id1=${id1}&id2=${id2}`, { method: 'POST' });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.detail || 'Error al sumar');
+      cont.innerHTML = '';
+      cont.appendChild(renderMatrizSoloLectura(body.resultado));
+    } catch (e) {
+      cont.innerHTML = `<p class="mensaje error">${e.message}</p>`;
+    }
+  }
+
+  async function calcularDeterminante() {
+    const id = document.getElementById('sel-det').value;
+    const cont = document.getElementById('resultado-det');
+    if (!id) { cont.innerHTML = '<p class="mensaje error">Elegí una matriz guardada.</p>'; return; }
+    try {
+      const r = await fetch(`${API_URL}/operaciones/determinante?id=${id}`, { method: 'POST' });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.detail || 'Error al calcular el determinante');
+      cont.innerHTML = `<p class="resultado-escalar">det = ${body.resultado}</p>`;
+    } catch (e) {
+      cont.innerHTML = `<p class="mensaje error">${e.message}</p>`;
+    }
+  }
+
+  async function transponerMatriz() {
+    const id = document.getElementById('sel-transp').value;
+    const cont = document.getElementById('resultado-transp');
+    if (!id) { cont.innerHTML = '<p class="mensaje error">Elegí una matriz guardada.</p>'; return; }
+    try {
+      const r = await fetch(`${API_URL}/operaciones/transponer?id=${id}`, { method: 'POST' });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.detail || 'Error al transponer');
+      cont.innerHTML = '';
+      cont.appendChild(renderMatrizSoloLectura(body.resultado));
+    } catch (e) {
+      cont.innerHTML = `<p class="mensaje error">${e.message}</p>`;
+    }
+  }
+
+  // Los senos y cosenos dejan residuos como 6.12e-17 donde debería haber 0.
+  const redondear = datos => datos.map(fila => fila.map(v => +v.toFixed(4) || 0));
+
+  async function calcularTransformacion() {
+    const cont = document.getElementById('resultado-transf');
+    const params = {};
+    ['tx', 'ty', 'tz', 'rx', 'ry', 'rz', 's'].forEach(k => {
+      params[k] = parseFloat(document.getElementById(`tf-${k}`).value) || 0;
+    });
+    try {
+      const r = await fetch(`${API_URL}/operaciones/transformacion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : 'Error al calcular la transformación');
+
+      const grupo = document.createElement('div');
+      grupo.className = 'factores';
+      const agregar = (titulo, datos, esProducto = false) => {
+        const caja = document.createElement('div');
+        caja.innerHTML = `<h4 class="${esProducto ? 'producto' : ''}">${titulo}</h4>`;
+        caja.appendChild(renderMatrizSoloLectura(redondear(datos)));
+        grupo.appendChild(caja);
+      };
+      body.orden.forEach(nombre => agregar(nombre, body.factores[nombre]));
+      agregar('M = ' + body.orden.join(' · '), body.resultado, true);
+
+      cont.innerHTML = '';
+      cont.appendChild(grupo);
+    } catch (e) {
+      cont.innerHTML = `<p class="mensaje error">${e.message}</p>`;
+    }
+  }
+
+  // inicio
+  generarCuadricula();
+  cargarMatrices();
+</script>
+
+</body>
+</html>

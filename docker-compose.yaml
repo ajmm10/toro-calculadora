@@ -1,0 +1,41 @@
+# Levanta los dos servicios en una sola red interna.
+#
+#   calculadora   API de matrices           http://localhost:8000
+#   visualizador  toro 3D + WebSocket       http://localhost:8002
+#
+# El visualizador alcanza a la calculadora por el nombre del servicio
+# (http://calculadora:8000), no por localhost: dentro de un contenedor
+# "localhost" es el contenedor mismo.
+
+services:
+  calculadora:
+    build: ./calculadora_matrices
+    container_name: calculadora-matrices
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [matrices-net]
+
+  visualizador:
+    build: ./modelotoro
+    container_name: visualizador-toro
+    ports:
+      - "8002:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CALCULADORA_URL=http://calculadora:8000
+    depends_on:
+      calculadora:
+        condition: service_healthy
+    networks: [matrices-net]
+
+networks:
+  matrices-net:
+    driver: bridge

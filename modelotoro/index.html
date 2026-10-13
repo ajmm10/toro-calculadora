@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visualizador 3D — modelos conectados a la calculadora de matrices</title>
+<style>
+  :root {
+    --bg: #0e1117;
+    --panel: rgba(22, 27, 34, 0.92);
+    --borde: #30363d;
+    --texto: #e6edf3;
+    --dim: #8b949e;
+    --ok: #3fb950;
+    --bad: #f85149;
+    --acento: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; overflow: hidden; background: var(--bg); color: var(--texto);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  canvas { display: block; }
+
+  .panel {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 14px 16px;
+    backdrop-filter: blur(6px);
+  }
+
+  #encabezado { top: 14px; left: 14px; max-width: 420px; }
+  #encabezado h1 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+  #encabezado p { margin: 4px 0; font-size: 12.5px; color: var(--dim); line-height: 1.45; }
+  #info { color: var(--texto); }
+  .modelos { display: flex; gap: 6px; margin: 10px 0 8px; }
+  .modelos button { flex: 1; }
+
+  #controles { top: 14px; right: 14px; width: 320px; }
+  #controles h2 {
+    margin: 0 0 10px; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
+  }
+  .fila { display: grid; grid-template-columns: 34px 1fr 48px; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .fila label { font-size: 12px; color: var(--dim); }
+  .fila output { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--acento); }
+  .separador { height: 1px; background: var(--borde); margin: 10px 0; }
+
+  .botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .botones button:last-child { grid-column: 1 / -1; }
+  button {
+    padding: 8px 10px; font-size: 12px; white-space: nowrap; cursor: pointer;
+    background: #21262d; color: var(--texto);
+    border: 1px solid var(--borde); border-radius: 6px;
+  }
+  button:hover { border-color: var(--acento); }
+  button:disabled { opacity: .5; cursor: default; border-color: var(--borde); }
+  button.on { background: var(--acento); color: #06121f; border-color: var(--acento); font-weight: 600; }
+
+  #estado { bottom: 14px; left: 14px; min-width: 390px; }
+  #estado p { margin: 0 0 6px; font-size: 12.5px; color: var(--dim); }
+  #matrix {
+    margin: 8px 0 0; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; line-height: 1.5; color: var(--acento); white-space: pre;
+  }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+  .dim { color: var(--dim); font-size: 11.5px; }
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three.module.js",
+    "three/addons/": "/vendor/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div class="panel" id="encabezado">
+  <h1 id="titulo">Visualizador 3D</h1>
+  <div class="modelos">
+    <button data-modelo="toro">Toro</button>
+    <button data-modelo="esfera">Esfera</button>
+    <button data-modelo="cubo">Cubo</button>
+  </div>
+  <p id="info">Cargando vértices…</p>
+  <p>La matriz de transformación no se calcula aquí: este servicio manda los
+     parámetros y la calculadora de matrices arma los cinco factores y su producto.</p>
+</div>
+
+<div class="panel" id="controles">
+  <h2>Traslación</h2>
+  <div class="fila"><label for="tx">tx</label><input id="tx" type="range" data-k="tx" min="-6" max="6" step="0.1" value="0"><output>0.0</output></div>
+  <div class="fila"><label for="ty">ty</label><input id="ty" type="range" data-k="ty" min="-6" max="6" step="0.1" value="0"><output>0.0</output></div>
+  <div class="fila"><label for="tz">tz</label><input id="tz" type="range" data-k="tz" min="-6" max="6" step="0.1" value="0"><output>0.0</output></div>
+
+  <div class="separador"></div>
+  <h2>Rotación (grados)</h2>
+  <div class="fila"><label for="rx">rx</label><input id="rx" type="range" data-k="rx" min="-180" max="180" step="1" value="0"><output>0.0</output></div>
+  <div class="fila"><label for="ry">ry</label><input id="ry" type="range" data-k="ry" min="-180" max="180" step="1" value="0"><output>0.0</output></div>
+  <div class="fila"><label for="rz">rz</label><input id="rz" type="range" data-k="rz" min="-180" max="180" step="1" value="0"><output>0.0</output></div>
+
+  <div class="separador"></div>
+  <h2>Escala</h2>
+  <div class="fila"><label for="s">s</label><input id="s" type="range" data-k="s" min="0.2" max="3" step="0.05" value="1"><output>1.00</output></div>
+
+  <div class="botones">
+    <button id="mode">Vista</button>
+    <button id="auto">Giro automático</button>
+    <button id="reset">Reiniciar</button>
+  </div>
+</div>
+
+<div class="panel" id="estado">
+  <p id="status">WebSocket: conectando…</p>
+  <p id="origin">Matriz: esperando la primera respuesta…</p>
+  <pre id="matrix">M = T · Rz · Ry · Rx · S</pre>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
