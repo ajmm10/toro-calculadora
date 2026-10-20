@@ -1,7 +1,7 @@
 # main.py
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -12,6 +12,34 @@ import services
 app = FastAPI(title="Calculadora de Matrices")
 
 BASE_DIR = Path(__file__).parent
+
+# 'unsafe-inline' sigue en script-src y style-src porque el <script> y el
+# <style> de index.html están en línea. Endurecerlo exige moverlos a archivos
+# externos o usar nonces.
+CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
+    "form-action 'self'"
+)
+CABECERAS_SEGURIDAD = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+# /docs y /redoc cargan Swagger UI y ReDoc desde cdn.jsdelivr.net; con la CSP
+# de arriba se quedarían en blanco. Reciben el resto de cabeceras, pero no la CSP.
+RUTAS_SIN_CSP = {"/docs", "/docs/oauth2-redirect", "/redoc"}
+
+
+@app.middleware("http")
+async def cabeceras_seguridad(request: Request, call_next):
+    respuesta = await call_next(request)
+    if request.url.path not in RUTAS_SIN_CSP:
+        respuesta.headers["Content-Security-Policy"] = CSP
+    respuesta.headers.update(CABECERAS_SEGURIDAD)
+    return respuesta
+
 
 # Sin esto, el navegador bloquea las peticiones que hace index.html
 # (abierto como archivo local) hacia esta API por política CORS.
