@@ -25,10 +25,20 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Visualizador 3D — modelos conectados a la calculadora")
 
+# index.html y app.js se sirven desde este mismo origen, y la llamada a la
+# calculadora es servidor a servidor (httpx), donde CORS no interviene. Solo
+# se admiten los orígenes de la lista blanca, separados por comas en
+# ORIGENES_PERMITIDOS. La misma lista valida el Origin del WebSocket.
+ORIGENES_PERMITIDOS = [
+    o.strip().rstrip("/")
+    for o in os.getenv(
+        "ORIGENES_PERMITIDOS", "http://localhost:8010,http://localhost:8012"
+    ).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ORIGENES_PERMITIDOS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

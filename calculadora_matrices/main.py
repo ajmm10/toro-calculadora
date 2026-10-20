@@ -1,4 +1,5 @@
 # main.py
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -41,11 +42,19 @@ async def cabeceras_seguridad(request: Request, call_next):
     return respuesta
 
 
-# Sin esto, el navegador bloquea las peticiones que hace index.html
-# (abierto como archivo local) hacia esta API por política CORS.
+# index.html se sirve desde este mismo origen y el visualizador llama a esta
+# API servidor a servidor (httpx), donde CORS no interviene. Solo se admiten
+# los orígenes de la lista blanca, separados por comas en ORIGENES_PERMITIDOS.
+ORIGENES_PERMITIDOS = [
+    o.strip().rstrip("/")
+    for o in os.getenv(
+        "ORIGENES_PERMITIDOS", "http://localhost:8010,http://localhost:8012"
+    ).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ORIGENES_PERMITIDOS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
