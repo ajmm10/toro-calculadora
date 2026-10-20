@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from models import MatrixChain, MatrixCreate, TransformParams
-from repository import MatrixRepository
+from repository import MatrixRepository, RepositorioLleno
 import services
 
 app = FastAPI(title="Calculadora de Matrices")
@@ -76,7 +76,10 @@ def health():
 
 @app.post("/matrices")
 def crear_matriz(payload: MatrixCreate):
-    return repo.crear(payload.model_dump())
+    try:
+        return repo.crear(payload.model_dump())
+    except RepositorioLleno as e:
+        raise HTTPException(409, str(e))
 
 
 @app.get("/matrices")
