@@ -183,6 +183,14 @@ async def estado_calculadora():
 
 @app.websocket("/ws/transform")
 async def ws_transform(websocket: WebSocket):
+    # CORS no protege los WebSockets: sin esta comprobación, cualquier sitio
+    # que el usuario visite podría abrir este socket desde su navegador y
+    # manejar el visor (Cross-Site WebSocket Hijacking). 1008 = policy violation.
+    origen = (websocket.headers.get("origin") or "").rstrip("/")
+    if origen not in ORIGENES_PERMITIDOS:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
     async with httpx.AsyncClient(timeout=5.0) as cliente:
