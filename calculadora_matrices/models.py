@@ -1,15 +1,30 @@
 # models.py
 from pydantic import BaseModel, field_validator
 
+# services.multiplicar es O(n³) en Python puro y los endpoints no tienen
+# autenticación: sin tope, una sola petición con matrices grandes ocupa el
+# servicio indefinidamente.
+MAX_DIMENSION = 50
+MAX_MATRICES_EN_CADENA = 10
+
 
 def _validar_rectangular(m: list[list[float]], etiqueta: str) -> None:
     if not m:
         raise ValueError(f"{etiqueta} está vacía")
+    if len(m) > MAX_DIMENSION:
+        raise ValueError(
+            f"{etiqueta}: tiene {len(m)} filas; el máximo es {MAX_DIMENSION}"
+        )
     largos = {len(fila) for fila in m}
     if len(largos) != 1:
         raise ValueError(f"{etiqueta}: todas las filas deben tener el mismo largo")
     if largos == {0}:
         raise ValueError(f"{etiqueta}: las filas no pueden estar vacías")
+    columnas = largos.pop()
+    if columnas > MAX_DIMENSION:
+        raise ValueError(
+            f"{etiqueta}: tiene {columnas} columnas; el máximo es {MAX_DIMENSION}"
+        )
 
 
 class MatrixCreate(BaseModel):
@@ -43,6 +58,10 @@ class MatrixChain(BaseModel):
     def cadena_valida(cls, v):
         if not v:
             raise ValueError("se requiere al menos una matriz")
+        if len(v) > MAX_MATRICES_EN_CADENA:
+            raise ValueError(
+                f"la cadena tiene {len(v)} matrices; el máximo es {MAX_MATRICES_EN_CADENA}"
+            )
         for i, m in enumerate(v):
             _validar_rectangular(m, f"la matriz en la posición {i}")
         return v

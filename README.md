@@ -8,7 +8,7 @@ calculadora de matrices.
 ┌──────────────────────┐   POST /operaciones/    ┌────────────────────────┐
 │  visualizador (toro) │  ──   transformacion    ─▶ │ calculadora_matrices │
 │  FastAPI + Three.js  │   ◀── M = T·Rz·Ry·Rx·S ──  │  FastAPI             │
-│  :8002               │                           │  :8000               │
+│  :8012               │                           │  :8010               │
 └──────────────────────┘                           └────────────────────────┘
 ```
 
@@ -18,8 +18,8 @@ calculadora de matrices.
 docker compose up --build
 ```
 
-- Visualizador 3D — <http://localhost:8002>
-- Calculadora de matrices — <http://localhost:8000>
+- Visualizador 3D — <http://localhost:8012>
+- Calculadora de matrices — <http://localhost:8010>
 - Documentación de ambas APIs — `/docs` en cada puerto
 
 ## Qué se conectó, exactamente
@@ -95,10 +95,10 @@ es lo que permite correrlo fuera de Docker:
 
 ```bash
 # terminal 1
-cd calculadora_matrices && uvicorn main:app --port 8000
+cd calculadora_matrices && uvicorn main:app --port 8010
 
 # terminal 2
-cd modelotoro && CALCULADORA_URL=http://127.0.0.1:8000 uvicorn main:app --port 8002
+cd modelotoro && CALCULADORA_URL=http://127.0.0.1:8010 uvicorn main:app --port 8012
 ```
 
 El `compose` además espera a que la calculadora pase su `healthcheck` antes de
@@ -123,30 +123,30 @@ vértices; las mallas incluyen además `grid`.
 
 ```bash
 # ¿el visualizador alcanza a la calculadora?
-curl -s localhost:8002/api/calculadora
+curl -s localhost:8012/api/calculadora
 
 # multiplicar dos matrices por id
-curl -s -X POST localhost:8000/matrices -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8010/matrices -H 'Content-Type: application/json' \
   -d '{"nombre":"A","datos":[[1,2],[3,4]]}'
-curl -s -X POST localhost:8000/matrices -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8010/matrices -H 'Content-Type: application/json' \
   -d '{"nombre":"B","datos":[[5,6],[7,8]]}'
-curl -s -X POST 'localhost:8000/operaciones/multiplicar?id1=1&id2=2'
+curl -s -X POST 'localhost:8010/operaciones/multiplicar?id1=1&id2=2'
 #  -> {"resultado":[[19,22],[43,50]]}
 
 # la cadena que usa el visualizador (aquí, dos identidades y una escala)
-curl -s -X POST localhost:8000/operaciones/multiplicar-cadena \
+curl -s -X POST localhost:8010/operaciones/multiplicar-cadena \
   -H 'Content-Type: application/json' \
   -d '{"matrices":[[[1,0],[0,1]],[[1,0],[0,1]],[[2,0],[0,2]]]}'
 #  -> {"resultado":[[2,0],[0,2]],"factores":3}
 
 # la transformación completa del toro (ángulos en grados)
-curl -s -X POST localhost:8000/operaciones/transformacion \
+curl -s -X POST localhost:8010/operaciones/transformacion \
   -H 'Content-Type: application/json' \
   -d '{"tx":1,"rz":90,"s":2}'
 #  -> {"orden":["T","Rz","Ry","Rx","S"],"factores":{...},"resultado":[[0,-2,0,1],...]}
 
 # dimensiones incompatibles -> 400, no 500
-curl -s -X POST localhost:8000/operaciones/multiplicar-cadena \
+curl -s -X POST localhost:8010/operaciones/multiplicar-cadena \
   -H 'Content-Type: application/json' \
   -d '{"matrices":[[[1,2,3]],[[1,2],[3,4]]]}'
 ```
