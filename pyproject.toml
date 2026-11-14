@@ -1,0 +1,22 @@
+# Configuración compartida de calidad (Actividad #10).
+# La misma para main y para cualquier rama: así un PR se compara contra
+# main con las mismas reglas.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["modelotoro/vendor"]
+
+[tool.ruff.lint]
+# E/F: errores y estilo básico · B: bugbear · S: seguridad (bandit) · C90: complejidad
+select = ["E", "F", "B", "S", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# assert es la forma normal de verificar en pytest
+"tests/**" = ["S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

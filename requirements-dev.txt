@@ -1,0 +1,5 @@
+# Herramientas de desarrollo y revisión (no van en las imágenes de Docker)
+-r calculadora_matrices/requirements.txt
+httpx>=0.27.0
+pytest>=8.0
+ruff>=0.6
