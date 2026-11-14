@@ -88,6 +88,7 @@ class TransformParams(BaseModel):
 # Rangos públicos: el OpenAPI los documenta y el servidor los aplica, no el
 # cliente ni el modelo de lenguaje que use la API como herramienta.
 RESOLUCION_MAX = 100     # la malla completa; más no existe
+NOMBRE_MAX = 40
 
 
 class MorphParams(BaseModel):
@@ -102,3 +103,21 @@ class MorphParams(BaseModel):
         description="Lado de la malla devuelta: resolucion × resolucion vértices.",
     )
 
+
+class FiguraCreate(MorphParams):
+    """Entrada de POST /figuras: una forma del morph guardada con nombre."""
+
+    nombre: str = Field(
+        ..., min_length=1, max_length=NOMBRE_MAX,
+        pattern=r"^[\w][\w .\-]*$",
+        description="Letras, números, espacios, punto, guion y guion bajo.",
+    )
+
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def recortar(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+
+class FiguraOut(FiguraCreate):
+    id: int

@@ -4,17 +4,19 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 import morph
 import services
 from models import (
+    FiguraCreate,
+    FiguraOut,
     MatrixChain,
     MatrixCreate,
     MorphParams,
     TransformParams,
 )
-from repository import MatrixRepository, RepositorioLleno
+from repository import FiguraRepository, MatrixRepository, NombreEnUso, RepositorioLleno
 
 app = FastAPI(title="Calculadora de Matrices")
 
@@ -66,6 +68,7 @@ app.add_middleware(
 )
 
 repo = MatrixRepository()
+figuras = FiguraRepository()
 
 
 @app.get("/")
@@ -193,3 +196,33 @@ def operacion_morph(payload: MorphParams):
         "vertices": morph.vertices(payload.t, payload.resolucion),
     }
 
+
+@app.post("/figuras", response_model=FiguraOut, status_code=201)
+def guardar_figura(payload: FiguraCreate):
+    """Guarda una forma del morph con nombre.
+
+    Idempotente: si la misma figura (nombre, t y resolucion) ya existe, se
+    devuelve la existente con 200. El mismo nombre con otros valores da 409.
+    """
+    try:
+        figura, creada = figuras.guardar(payload.model_dump())
+    except NombreEnUso as e:
+        raise HTTPException(409, str(e)) from e
+    except RepositorioLleno as e:
+        raise HTTPException(409, str(e)) from e
+    if not creada:
+        return JSONResponse(figura, status_code=200)
+    return figura
+
+
+@app.get("/figuras", response_model=list[FiguraOut])
+def listar_figuras():
+    return figuras.listar()
+
+
+@app.get("/figuras/{id}", response_model=FiguraOut)
+def obtener_figura(id: int):
+    figura = figuras.obtener(id)
+    if not figura:
+        raise HTTPException(404, "figura no encontrada")
+    return figura

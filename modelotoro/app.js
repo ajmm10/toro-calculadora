@@ -236,6 +236,59 @@ document.getElementById('morph-anim').onclick = (e) => {
     animandoMorph = !animandoMorph;
     e.target.classList.toggle('on', animandoMorph);
 };
+// Figuras guardadas: un t con nombre. Las guarda la calculadora; el visor solo
+// las reenvía. El nombre se pinta con textContent, nunca como HTML.
+const figuraNombre = document.getElementById('figura-nombre');
+const figuraInput = document.getElementById('figura-input');
+const figuraLista = document.getElementById('figura-lista');
+const figuraEstado = document.getElementById('figura-estado');
+let figuras = [];
+
+function ponerT(t) {
+    tSlider.value = t;
+    tOut.textContent = parseFloat(tSlider.value).toFixed(2);
+    pedirT(parseFloat(tSlider.value));
+}
+
+async function cargarFiguras() {
+    const res = await fetch(`${API}/api/figuras`);
+    if (!res.ok) return;
+    figuras = await res.json();
+    figuraLista.replaceChildren(new Option('Figuras guardadas…', ''));
+    for (const f of figuras) figuraLista.add(new Option(`${f.nombre} (t = ${f.t.toFixed(2)})`, f.id));
+}
+
+document.getElementById('figura-guardar').onclick = async () => {
+    const nombre = figuraInput.value.trim();
+    if (!nombre) return;
+    const res = await fetch(`${API}/api/figuras`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, t: parseFloat(tSlider.value), resolucion: 100 }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        const detalle = Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail;
+        figuraEstado.className = 'bad';
+        figuraEstado.textContent = `No se guardó: ${detalle}`;
+        return;
+    }
+    figuraNombre.textContent = data.nombre;
+    figuraEstado.className = 'dim';
+    figuraEstado.textContent = res.status === 201 ? 'Guardada.' : 'Ya estaba guardada.';
+    await cargarFiguras();
+};
+
+figuraLista.onchange = () => {
+    const f = figuras.find(x => String(x.id) === figuraLista.value);
+    if (!f) return;
+    figuraNombre.textContent = f.nombre;
+    ponerT(f.t);
+};
+
+// Mover el deslizador deja de ser la figura guardada
+tSlider.addEventListener('input', () => { figuraNombre.textContent = 'sin nombre'; });
+
 // ?modelo=morph&t=0.7 abre el morph ya en ese punto
 const tInicial = parseFloat(new URLSearchParams(location.search).get('t'));
 if (!Number.isNaN(tInicial)) {
@@ -244,6 +297,7 @@ if (!Number.isNaN(tInicial)) {
 }
 // ?modelo=esfera abre directamente otro modelo
 await elegirModelo(new URLSearchParams(location.search).get('modelo') ?? 'toro');
+cargarFiguras();
 document.getElementById('mode').onclick = () => { modeIdx = (modeIdx + 1) % modes.length; applyMode(); };
 
 // ---------------------------------------------------------------------------

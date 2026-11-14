@@ -20,7 +20,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Visualizador 3D — modelos conectados a la calculadora")
@@ -186,6 +186,36 @@ def modelo_csv(nombre: str = "toro"):
     """Formato alterno: total de puntos y lista de vértices."""
     m = model(nombre)
     return {"total_puntos": m["count"], "vertices": m["points"]}
+
+
+@app.post("/api/figuras")
+async def guardar_figura(request: Request):
+    """Reenvía el guardado a la calculadora, que valida y guarda.
+
+    El visor no guarda nada: solo pasa el cuerpo y devuelve la respuesta de la
+    calculadora con su mismo código (201 creada, 200 ya existía, 409, 422).
+    """
+    cuerpo = await request.body()
+    async with httpx.AsyncClient(timeout=5.0) as cliente:
+        try:
+            r = await cliente.post(
+                f"{CALCULADORA_URL}/figuras",
+                content=cuerpo,
+                headers={"Content-Type": "application/json"},
+            )
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"la calculadora no respondió: {e.__class__.__name__}") from e
+    return JSONResponse(r.json(), status_code=r.status_code)
+
+
+@app.get("/api/figuras")
+async def listar_figuras():
+    async with httpx.AsyncClient(timeout=5.0) as cliente:
+        try:
+            r = await cliente.get(f"{CALCULADORA_URL}/figuras")
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"la calculadora no respondió: {e.__class__.__name__}") from e
+    return JSONResponse(r.json(), status_code=r.status_code)
 
 
 @app.get("/api/calculadora")

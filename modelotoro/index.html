@@ -40,6 +40,13 @@
 
   #controles { top: 14px; right: 14px; width: 320px; }
   [hidden] { display: none !important; }
+  .figura { margin: 8px 0 6px; font-size: 12.5px; }
+  .fila-figura { display: flex; gap: 6px; margin-bottom: 6px; }
+  .fila-figura input, #figura-lista {
+    flex: 1; width: 100%; background: transparent; color: var(--texto);
+    border: 1px solid var(--borde); border-radius: 6px; padding: 5px 7px; font: inherit;
+  }
+  #figura-lista option { color: #000; }
   #controles h2 {
     margin: 0 0 10px; font-size: 12px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
@@ -120,6 +127,13 @@
     <div class="fila"><label for="t">t</label><input id="t" type="range" min="0" max="1" step="0.01" value="0"><output id="t-out">0.00</output></div>
     <button id="morph-anim" style="width:100%">Animar dona ⇄ taza</button>
     <p id="morph-estado" class="dim">Morph: esperando a la calculadora…</p>
+    <p class="figura">Figura: <b id="figura-nombre">sin nombre</b></p>
+    <div class="fila-figura">
+      <input id="figura-input" type="text" maxlength="40" placeholder="Nombre de la figura">
+      <button id="figura-guardar">Guardar</button>
+    </div>
+    <select id="figura-lista"><option value="">Figuras guardadas…</option></select>
+    <p id="figura-estado" class="dim"></p>
   </div>
 
   <div class="botones">
