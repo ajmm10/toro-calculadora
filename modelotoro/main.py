@@ -57,7 +57,7 @@ def cargar_puntos(path: Path) -> list[list[float]]:
         return [[float(r["x"]), float(r["y"]), float(r["z"])] for r in filas]
 
 
-def cargar_modelo(archivo: str, nube: bool = False) -> dict:
+def cargar_modelo(archivo: str, nube: bool = False, z_arriba: bool = False) -> dict:
     """Vértices del modelo y, si es una malla, cómo unirlos.
 
     El toro es una malla cuadrada de su superficie (100 x 100) y el navegador
@@ -67,6 +67,10 @@ def cargar_modelo(archivo: str, nube: bool = False) -> dict:
     """
     puntos = cargar_puntos(BASE_DIR / archivo)
     modelo = {"count": len(puntos), "points": puntos}
+    if z_arriba:
+        # El visualizador tiene "arriba" en y; estos puntos vienen con la
+        # altura en z. El navegador los endereza y los centra al cargarlos.
+        modelo["z_arriba"] = True
     if nube:
         return modelo
     grid = math.isqrt(len(puntos))
@@ -80,7 +84,25 @@ MODELOS = {
     "toro": cargar_modelo("modelo_3d.csv"),
     "esfera": cargar_modelo("coordenadas_esfera_volumen.csv", nube=True),
     "cubo": cargar_modelo("coordenadas_cubo_volumen.csv", nube=True),
+    # Generada con generar_taza.py sobre el mismo dominio (u, v) que el toro.
+    "taza": cargar_modelo("modelo_taza.csv"),
+    # Nube de puntos de una taza descargada: sin orden ni caras, como la esfera.
+    "taza_nube": cargar_modelo("taza_3d_10000_puntos.csv", nube=True, z_arriba=True),
 }
+
+# El morph dona → taza no es una interpolación recta entre dos mallas: eso hace
+# que la superficie se atraviese. Es una secuencia de fotogramas (formas
+# válidas, generadas y verificadas por generar_morph.py) que el navegador
+# recorre interpolando entre fotogramas vecinos. El archivo es un arreglo
+# float32 de (fotogramas × vértices × 3); el último fotograma es la taza.
+MORPH_BIN = BASE_DIR / "morph_frames.bin"
+VERTICES = MODELOS["taza"]["count"]
+BYTES_POR_FOTOGRAMA = VERTICES * 3 * 4
+if MORPH_BIN.stat().st_size % BYTES_POR_FOTOGRAMA:
+    raise RuntimeError("morph_frames.bin no es un número entero de fotogramas")
+FOTOGRAMAS = MORPH_BIN.stat().st_size // BYTES_POR_FOTOGRAMA
+if (MODELOS["toro"]["count"], MODELOS["toro"]["grid"]) != (VERTICES, MODELOS["taza"]["grid"]):
+    raise RuntimeError("toro y taza deben tener la misma malla para poder hacer morph")
 
 # Parámetros que entiende la calculadora y su valor neutro (la identidad).
 PARAMETROS = {"tx": 0.0, "ty": 0.0, "tz": 0.0, "rx": 0.0, "ry": 0.0, "rz": 0.0, "s": 1.0}
@@ -130,6 +152,18 @@ def modelo_csv(nombre: str = "toro"):
     """Formato alterno: total de puntos y lista de vértices."""
     m = model(nombre)
     return {"total_puntos": m["count"], "vertices": m["points"]}
+
+
+@app.get("/api/morph")
+def morph_meta():
+    """Tamaño del morph dona → taza: fotogramas, vértices por fotograma y malla."""
+    return {"frames": FOTOGRAMAS, "count": VERTICES, "grid": MODELOS["taza"]["grid"]}
+
+
+@app.get("/api/morph/datos")
+def morph_datos():
+    """Los fotogramas del morph, en bruto (float32 little-endian)."""
+    return FileResponse(MORPH_BIN, media_type="application/octet-stream")
 
 
 @app.get("/api/calculadora")

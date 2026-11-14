@@ -106,8 +106,9 @@ levantar el visualizador (`depends_on: condition: service_healthy`).
 
 ## Modelos
 
-El visualizador tiene tres modelos que se eligen con los botones del panel
-superior izquierdo: **toro**, **esfera** y **cubo**. Los tres reciben la misma
+El visualizador tiene varios modelos que se eligen con los botones del panel
+superior izquierdo: **toro**, **esfera**, **cubo**, **taza**, **taza (nube)** y el
+morph **dona→taza** (ver más abajo). Los tres reciben la misma
 matriz de la calculadora; al cambiar de modelo la transformación se conserva.
 
 - El toro es una malla cuadrada de su superficie (100×100): las caras salen
@@ -118,6 +119,36 @@ matriz de la calculadora; al cambiar de modelo la transformación se conserva.
 
 `GET /modelos` lista los nombres y `GET /model?nombre=esfera` devuelve los
 vértices; las mallas incluyen además `grid`.
+
+## Morph dona → taza
+
+El botón **Dona→Taza** muestra un deslizador `t`: en 0 están las coordenadas de la
+dona y en 1 las de la taza (`taza_3d_10000_puntos.csv`). Los botones **Taza** y
+**Taza (nube)** muestran la taza sola, como malla y como nube de puntos.
+
+**No es** la interpolación recta `P = (1 − t)·D + t·T` de la diapositiva: con
+esta taza esa fórmula hace que la superficie se atraviese a sí misma (hasta 762
+cruces en t = 0.6). En su lugar el servidor entrega 42 fotogramas, formas
+intermedias válidas, y el navegador interpola entre fotogramas vecinos.
+
+- Dona → tubo con asa en lazo → taza ajustada a las medidas de la nube: 0 cruces,
+  verificados en cada fotograma y en tres puntos entre fotogramas.
+- Último tramo, taza ajustada → nube: cada vértice pasa a un punto real del CSV.
+  Los puntos están desordenados y rellenan el grosor de la pared, así que aquí
+  quedan unos cientos de cruces locales pequeños y la superficie se ve áspera en
+  vista sólida. Solo se usan ~4 400 puntos distintos de los 10 000 (algunos se
+  repiten).
+- `t` se limita a [0, 1]; fuera de ese rango no hay formas intermedias.
+
+Los fotogramas se regeneran con (requiere `pip install numpy`; el servicio no lo usa):
+
+```bash
+cd modelotoro
+python generar_morph.py     # tarda un par de minutos; se detiene sin escribir si hay cruces
+```
+
+`GET /api/morph` da el número de fotogramas y `GET /api/morph/datos` los
+fotogramas en bruto (float32). `verificar_cruces.py` cuenta los cruces de una malla.
 
 ## Comprobar el enlace sin abrir el navegador
 
@@ -201,5 +232,11 @@ toro-calculadora/
     ├── modelo_3d.csv            # toro: 10 000 vértices, malla 100×100
     ├── coordenadas_esfera_volumen.csv  # esfera r=5: 30 000 puntos del volumen
     ├── coordenadas_cubo_volumen.csv    # cubo de lado 10: 30 000 puntos del volumen
+    ├── taza_3d_10000_puntos.csv        # taza: nube de 10 000 puntos (destino del morph)
+    ├── modelo_taza.csv                 # último fotograma del morph (generado)
+    ├── morph_frames.bin                # 42 fotogramas dona → taza (generado)
+    ├── generar_morph.py                # genera los fotogramas y verifica que no se crucen
+    ├── generar_taza.py                 # familia paramétrica de tazas que usa el generador
+    ├── verificar_cruces.py             # cuenta cruces de la superficie consigo misma
     └── Dockerfile               # sin build-essential
 ```

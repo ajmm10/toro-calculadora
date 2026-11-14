@@ -35,10 +35,11 @@
   #encabezado h1 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
   #encabezado p { margin: 4px 0; font-size: 12.5px; color: var(--dim); line-height: 1.45; }
   #info { color: var(--texto); }
-  .modelos { display: flex; gap: 6px; margin: 10px 0 8px; }
+  .modelos { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
   .modelos button { flex: 1; }
 
   #controles { top: 14px; right: 14px; width: 320px; }
+  [hidden] { display: none !important; }
   #controles h2 {
     margin: 0 0 10px; font-size: 12px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
@@ -88,6 +89,9 @@
     <button data-modelo="toro">Toro</button>
     <button data-modelo="esfera">Esfera</button>
     <button data-modelo="cubo">Cubo</button>
+    <button data-modelo="taza">Taza</button>
+    <button data-modelo="taza_nube">Taza (nube)</button>
+    <button data-modelo="morph">Dona→Taza</button>
   </div>
   <p id="info">Cargando vértices…</p>
   <p>La matriz de transformación no se calcula aquí: este servicio manda los
@@ -109,6 +113,13 @@
   <div class="separador"></div>
   <h2>Escala</h2>
   <div class="fila"><label for="s">s</label><input id="s" type="range" data-k="s" min="0.2" max="3" step="0.05" value="1"><output>1.00</output></div>
+
+  <div id="morph-panel" hidden>
+    <div class="separador"></div>
+    <h2>Morph dona → taza</h2>
+    <div class="fila"><label for="t">t</label><input id="t" type="range" min="0" max="1" step="0.01" value="0"><output id="t-out">0.00</output></div>
+    <button id="morph-anim" style="width:100%">Animar dona ⇄ taza</button>
+  </div>
 
   <div class="botones">
     <button id="mode">Vista</button>
