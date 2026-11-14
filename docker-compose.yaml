@@ -1,7 +1,7 @@
 # Levanta los dos servicios en una sola red interna.
 #
-#   calculadora   API de matrices           http://localhost:8000
-#   visualizador  toro 3D + WebSocket       http://localhost:8002
+#   calculadora   API de matrices           http://localhost:8010
+#   visualizador  toro 3D + WebSocket       http://localhost:8012
 #
 # El visualizador alcanza a la calculadora por el nombre del servicio
 # (http://calculadora:8000), no por localhost: dentro de un contenedor
@@ -12,7 +12,7 @@ services:
     build: ./calculadora_matrices
     container_name: calculadora-matrices
     ports:
-      - "8000:8000"
+      - "8010:8000"
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:
@@ -27,7 +27,7 @@ services:
     build: ./modelotoro
     container_name: visualizador-toro
     ports:
-      - "8002:8000"
+      - "8012:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - CALCULADORA_URL=http://calculadora:8000
