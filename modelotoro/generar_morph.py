@@ -1,4 +1,4 @@
-"""Genera morph_frames.bin y modelo_taza.csv: el morph dona → taza sin cruces.
+"""Genera calculadora_matrices/morph_frames.bin y modelo_taza.csv: el morph dona → taza sin cruces.
 
 La taza de destino es la nube de puntos `taza_3d_10000_puntos.csv`. Esos puntos
 vienen sin orden, así que no se pueden interpolar uno a uno con la dona ni
@@ -209,7 +209,7 @@ def main() -> None:
     claves.append(taza)
 
     datos = np.stack(claves).astype("<f4")
-    (AQUI / "morph_frames.bin").write_bytes(datos.tobytes())
+    (AQUI.parent / "calculadora_matrices" / "morph_frames.bin").write_bytes(datos.tobytes())
     with (AQUI / "modelo_taza.csv").open("w", newline="") as f:
         f.write("x,y,z\n")
         for x, y, z in taza.reshape(-1, 3):

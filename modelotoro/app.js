@@ -91,53 +91,34 @@ async function pedirModelo(nombre) {
     return data;
 }
 
-// "morph" no es un modelo del servidor: es una secuencia de fotogramas, cada
-// uno una forma válida entre la dona (primero) y la taza (último). Interpolar
-// en línea recta de la dona a la taza haría que la superficie se atravesara a
-// sí misma; entre fotogramas vecinos, en cambio, la interpolación sí es segura
-// porque el servidor los generó y verificó (ver generar_morph.py).
-let morph = null;   // { cuadros: Float32Array, n: fotogramas, tam: floats por fotograma }
+// "morph" no es un modelo del servidor: es la dona deformándose hacia la taza.
+// Este archivo NO interpola nada. El deslizador manda t por el WebSocket
+// /ws/morph, el backend se lo pasa a la calculadora (POST /operaciones/morph)
+// y lo que vuelve son los vértices ya calculados. La malla (caras y aristas)
+// es la del toro para cualquier t, así que solo cambian las posiciones.
+let morphActivo = false;
+let tPendiente = null;     // último t pedido que aún no se ha enviado
 
-async function pedirMorph() {
-    const meta = await (await fetch(`${API}/api/morph`)).json();
-    const res = await fetch(`${API}/api/morph/datos`);
-    if (!res.ok) throw new Error('no se pudo cargar el morph');
-    const cuadros = new Float32Array(await res.arrayBuffer());
-    const tam = meta.count * 3;
-    if (cuadros.length !== meta.frames * tam) throw new Error('el morph llegó incompleto');
-    return { cuadros, n: meta.frames, tam, count: meta.count, grid: meta.grid };
-}
-
-function aplicarMorph(t) {
-    if (!morph || !parts) return;
-    // t se limita a [0, 1]: fuera de ese rango ya no hay formas intermedias
-    // (t = 1.5 se pasaría de la taza y t = −1 se alejaría de ella).
-    t = Math.min(1, Math.max(0, t));
-    const { cuadros, n, tam } = morph;
-    const f = t * (n - 1);
-    const i = Math.min(Math.floor(f), n - 2);
-    const a = f - i;
-    const base = i * tam;
+function aplicarVertices(vertices) {
+    if (!morphActivo || !parts) return;
     const pos = parts.dots.geometry.attributes.position;
-    for (let k = 0; k < tam; k++) {
-        pos.array[k] = (1 - a) * cuadros[base + k] + a * cuadros[base + tam + k];
-    }
+    if (vertices.length !== pos.array.length) return;   // llegó tarde, de otro modelo
+    pos.array.set(vertices);
     pos.needsUpdate = true;
     if (parts.solid) parts.solid.geometry.computeVertexNormals();
 }
 
+function pedirT(t) {
+    tPendiente = t;
+}
+
 async function loadModel(nombre) {
     const esMorph = nombre === 'morph';
-    morph = null;
-    let data, flat;
-    if (esMorph) {
-        morph = await pedirMorph();
-        data = { grid: morph.grid };
-        flat = morph.cuadros.slice(0, morph.tam);      // arranca en la dona
-    } else {
-        data = await pedirModelo(nombre);
-        flat = new Float32Array(data.points.flat());
-    }
+    morphActivo = false;
+    // El morph arranca con la malla de la dona; la taza solo se pide para
+    // encuadrar la cámara, porque es bastante más grande.
+    const data = await pedirModelo(esMorph ? 'toro' : nombre);
+    const flat = new Float32Array(data.points.flat());
     const total = flat.length / 3;
     document.getElementById('morph-panel').hidden = !esMorph;
 
@@ -146,11 +127,8 @@ async function loadModel(nombre) {
     geometry.computeBoundingSphere();
     let radio = geometry.boundingSphere.radius;
     if (esMorph) {
-        // la taza del último fotograma es bastante más grande que la dona
-        const ultimo = (morph.n - 1) * morph.tam;
-        for (let k = 0; k < morph.tam; k += 3) {
-            radio = Math.max(radio, Math.hypot(morph.cuadros[ultimo + k], morph.cuadros[ultimo + k + 1], morph.cuadros[ultimo + k + 2]));
-        }
+        const taza = await pedirModelo('taza');
+        for (const [x, y, z] of taza.points) radio = Math.max(radio, Math.hypot(x, y, z));
     }
 
     // Una nube de volumen no tiene caras: solo existe la vista de puntos. La
@@ -198,7 +176,10 @@ async function loadModel(nombre) {
     parts = { solid, wire, dots, nube };
     encuadrar(radio);
 
-    if (esMorph) aplicarMorph(parseFloat(document.getElementById('t').value));
+    if (esMorph) {
+        morphActivo = true;
+        pedirT(parseFloat(document.getElementById('t').value));
+    }
 
     const forma = nube ? 'nube de puntos del volumen' : `malla ${data.grid}×${data.grid}`;
     document.getElementById('titulo').textContent = `Visualizador 3D — ${esMorph ? 'dona → taza' : nombre}`;
@@ -248,7 +229,7 @@ const tSlider = document.getElementById('t');
 const tOut = document.getElementById('t-out');
 tSlider.addEventListener('input', () => {
     tOut.textContent = parseFloat(tSlider.value).toFixed(2);
-    aplicarMorph(parseFloat(tSlider.value));
+    pedirT(parseFloat(tSlider.value));
 });
 let animandoMorph = false;
 document.getElementById('morph-anim').onclick = (e) => {
@@ -339,6 +320,28 @@ function connect() {
 }
 connect();
 
+// Segundo WebSocket, solo para el morph: manda t y recibe los vértices que
+// calculó la calculadora.
+const morphEl = document.getElementById('morph-estado');
+let wsMorph;
+function conectarMorph() {
+    wsMorph = new WebSocket(API.replace(/^http/, 'ws') + '/ws/morph');
+    wsMorph.onopen = () => { if (morphActivo) pedirT(parseFloat(tSlider.value)); };
+    wsMorph.onclose = () => setTimeout(conectarMorph, 1500);
+    wsMorph.onmessage = (event) => {
+        const res = JSON.parse(event.data);
+        if (res.origen === 'error') {
+            morphEl.className = 'bad';
+            morphEl.textContent = `Morph: ${res.error}`;
+            return;
+        }
+        aplicarVertices(res.vertices);
+        morphEl.className = 'dim';
+        morphEl.textContent = `Morph: calculadora · t = ${res.t.toFixed(2)} · ${res.count} vértices`;
+    };
+}
+conectarMorph();
+
 // ---------------------------------------------------------------------------
 // Bucle de render
 //
@@ -349,6 +352,7 @@ connect();
 // ---------------------------------------------------------------------------
 const INTERVALO_MS = 40;
 let ultimoEnvio = 0;
+let ultimoEnvioMorph = 0;   // el morph va limitado igual: 25 t por segundo
 let t = 0;
 
 function animate(ahora) {
@@ -367,18 +371,25 @@ function animate(ahora) {
         dirty = true;
     }
 
-    if (animandoMorph && morph) {
+    if (animandoMorph && morphActivo) {
         // vaivén suave 0 → 1 → 0 cada ~6 s
         const v = (1 - Math.cos(ahora / 1000 * Math.PI / 3)) / 2;
         tSlider.value = v;
         tOut.textContent = v.toFixed(2);
-        aplicarMorph(v);
+        pedirT(v);
     }
 
     if (dirty && ws.readyState === WebSocket.OPEN && ahora - ultimoEnvio >= INTERVALO_MS) {
         ws.send(JSON.stringify(params));
         dirty = false;
         ultimoEnvio = ahora;
+    }
+
+    if (tPendiente !== null && wsMorph.readyState === WebSocket.OPEN
+        && ahora - ultimoEnvioMorph >= INTERVALO_MS) {
+        wsMorph.send(JSON.stringify({ t: tPendiente }));
+        tPendiente = null;
+        ultimoEnvioMorph = ahora;
     }
 
     controls.update();

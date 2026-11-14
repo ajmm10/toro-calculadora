@@ -127,19 +127,16 @@ MODELOS = {
     "taza_nube": cargar_modelo("taza_3d_10000_puntos.csv", nube=True, z_arriba=True),
 }
 
-# El morph dona → taza no es una interpolación recta entre dos mallas: eso hace
-# que la superficie se atraviese. Es una secuencia de fotogramas (formas
-# válidas, generadas y verificadas por generar_morph.py) que el navegador
-# recorre interpolando entre fotogramas vecinos. El archivo es un arreglo
-# float32 de (fotogramas × vértices × 3); el último fotograma es la taza.
-MORPH_BIN = BASE_DIR / "morph_frames.bin"
-VERTICES = MODELOS["taza"]["count"]
-BYTES_POR_FOTOGRAMA = VERTICES * 3 * 4
-if MORPH_BIN.stat().st_size % BYTES_POR_FOTOGRAMA:
-    raise RuntimeError("morph_frames.bin no es un número entero de fotogramas")
-FOTOGRAMAS = MORPH_BIN.stat().st_size // BYTES_POR_FOTOGRAMA
-if (MODELOS["toro"]["count"], MODELOS["toro"]["grid"]) != (VERTICES, MODELOS["taza"]["grid"]):
+# El morph dona → taza lo calcula la calculadora (POST /operaciones/morph):
+# este servicio solo reenvía t por el WebSocket y devuelve los vértices. Para
+# que el navegador pueda reutilizar las caras del toro durante todo el morph,
+# la taza tiene que tener la misma malla.
+if (MODELOS["toro"]["count"], MODELOS["toro"]["grid"]) != (
+    MODELOS["taza"]["count"], MODELOS["taza"]["grid"]
+):
     raise RuntimeError("toro y taza deben tener la misma malla para poder hacer morph")
+RESOLUCION_MORPH = MODELOS["toro"]["grid"]
+ENDPOINT_MORPH = f"{CALCULADORA_URL}/operaciones/morph"
 
 # Parámetros que entiende la calculadora y su valor neutro (la identidad).
 PARAMETROS = {"tx": 0.0, "ty": 0.0, "tz": 0.0, "rx": 0.0, "ry": 0.0, "rz": 0.0, "s": 1.0}
@@ -191,18 +188,6 @@ def modelo_csv(nombre: str = "toro"):
     return {"total_puntos": m["count"], "vertices": m["points"]}
 
 
-@app.get("/api/morph")
-def morph_meta():
-    """Tamaño del morph dona → taza: fotogramas, vértices por fotograma y malla."""
-    return {"frames": FOTOGRAMAS, "count": VERTICES, "grid": MODELOS["taza"]["grid"]}
-
-
-@app.get("/api/morph/datos")
-def morph_datos():
-    """Los fotogramas del morph, en bruto (float32 little-endian)."""
-    return FileResponse(MORPH_BIN, media_type="application/octet-stream")
-
-
 @app.get("/api/calculadora")
 async def estado_calculadora():
     """Comprueba desde el navegador que el enlace con la calculadora existe."""
@@ -215,17 +200,22 @@ async def estado_calculadora():
             return {"url": CALCULADORA_URL, "alcanzable": False, "detalle": str(e)}
 
 
-@app.websocket("/ws/transform")
-async def ws_transform(websocket: WebSocket):
-    # CORS no protege los WebSockets: sin esta comprobación, cualquier sitio
-    # que el usuario visite podría abrir este socket desde su navegador y
-    # manejar el visor (Cross-Site WebSocket Hijacking). 1008 = policy violation.
+async def aceptar_si_origen_permitido(websocket: WebSocket) -> bool:
+    """CORS no protege los WebSockets: sin esta comprobación, cualquier sitio
+    que el usuario visite podría abrir el socket desde su navegador y manejar
+    el visor (Cross-Site WebSocket Hijacking). 1008 = policy violation."""
     origen = (websocket.headers.get("origin") or "").rstrip("/")
     if origen not in ORIGENES_PERMITIDOS:
         await websocket.close(code=1008)
-        return
-
+        return False
     await websocket.accept()
+    return True
+
+
+@app.websocket("/ws/transform")
+async def ws_transform(websocket: WebSocket):
+    if not await aceptar_si_origen_permitido(websocket):
+        return
 
     async with httpx.AsyncClient(timeout=5.0) as cliente:
         try:
@@ -252,5 +242,55 @@ async def ws_transform(websocket: WebSocket):
                     "matrix": a_columnas(M),
                     "rows": [[round(v, 4) for v in fila] for fila in M],
                 })
+        except WebSocketDisconnect:
+            pass
+
+
+def leer_t(mensaje) -> float:
+    """t del mensaje del navegador. La calculadora valida el rango; aquí solo
+    se rechaza lo que ni siquiera es un número."""
+    t = float(mensaje["t"])
+    if not math.isfinite(t):
+        raise ValueError("t no es un número finito")
+    return t
+
+
+async def pedir_morph(t: float, cliente: httpx.AsyncClient) -> dict:
+    """Mensaje para el navegador con los vértices del morph en t, o el error."""
+    try:
+        r = await cliente.post(ENDPOINT_MORPH, json={"t": t, "resolucion": RESOLUCION_MORPH})
+    except httpx.HTTPError as e:
+        return {"origen": "error", "error": f"la calculadora no respondió: {e.__class__.__name__}"}
+    if r.status_code != 200:
+        return {"origen": "error", "error": f"la calculadora rechazó t={t} ({r.status_code})"}
+    datos = r.json()
+    return {
+        "origen": "calculadora",
+        "t": datos["t"],
+        "count": datos["count"],
+        # aplanado y con 5 decimales: ~40 % menos bytes por mensaje
+        "vertices": [round(c, 5) for v in datos["vertices"] for c in v],
+    }
+
+
+@app.websocket("/ws/morph")
+async def ws_morph(websocket: WebSocket):
+    """Relevo del morph: el navegador manda {"t": ...}, la calculadora calcula
+    los vértices y este servicio se los reenvía. Aquí no se interpola nada."""
+    if not await aceptar_si_origen_permitido(websocket):
+        return
+
+    async with httpx.AsyncClient(timeout=5.0) as cliente:
+        try:
+            while True:
+                mensaje = await websocket.receive_json()
+                try:
+                    t = leer_t(mensaje)
+                except (KeyError, TypeError, ValueError):
+                    await websocket.send_json(
+                        {"origen": "error", "error": "mensaje sin un t numérico"}
+                    )
+                    continue
+                await websocket.send_json(await pedir_morph(t, cliente))
         except WebSocketDisconnect:
             pass

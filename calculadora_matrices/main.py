@@ -6,9 +6,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from models import MatrixChain, MatrixCreate, TransformParams
-from repository import MatrixRepository, RepositorioLleno
+import morph
 import services
+from models import (
+    MatrixChain,
+    MatrixCreate,
+    MorphParams,
+    TransformParams,
+)
+from repository import MatrixRepository, RepositorioLleno
 
 app = FastAPI(title="Calculadora de Matrices")
 
@@ -164,3 +170,26 @@ def determinante_matriz(id: int):
         return {"resultado": services.determinante(m["datos"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+# --- Morph dona → taza -------------------------------------------------------
+# La matemática del morph vive aquí, no en el visualizador: el visor solo
+# reenvía t y dibuja los vértices que recibe.
+
+
+@app.post("/operaciones/morph")
+def operacion_morph(payload: MorphParams):
+    """Vértices de la forma intermedia entre la dona (t = 0) y la taza (t = 1).
+
+    Devuelve una malla de `resolucion` × `resolucion` vértices; la cantidad es
+    la misma para cualquier t, así que el cliente puede reutilizar sus caras.
+    No guarda nada en el repositorio.
+    """
+    return {
+        "t": payload.t,
+        "resolucion": payload.resolucion,
+        "fotogramas": morph.FOTOGRAMAS,
+        "count": payload.resolucion ** 2,
+        "vertices": morph.vertices(payload.t, payload.resolucion),
+    }
+

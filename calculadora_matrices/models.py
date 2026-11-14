@@ -1,5 +1,5 @@
 # models.py
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # services.multiplicar es O(n³) en Python puro y los endpoints no tienen
 # autenticación: sin tope, una sola petición con matrices grandes ocupa el
@@ -82,3 +82,23 @@ class TransformParams(BaseModel):
     ry: float = 0.0
     rz: float = 0.0
     s: float = 1.0
+
+
+# --- Morph dona → taza -------------------------------------------------------
+# Rangos públicos: el OpenAPI los documenta y el servidor los aplica, no el
+# cliente ni el modelo de lenguaje que use la API como herramienta.
+RESOLUCION_MAX = 100     # la malla completa; más no existe
+
+
+class MorphParams(BaseModel):
+    """Entrada de /operaciones/morph."""
+
+    t: float = Field(
+        ..., ge=0.0, le=1.0, allow_inf_nan=False,
+        description="Avance del morph: 0 es la dona y 1 la taza.",
+    )
+    resolucion: int = Field(
+        RESOLUCION_MAX, ge=2, le=RESOLUCION_MAX,
+        description="Lado de la malla devuelta: resolucion × resolucion vértices.",
+    )
+
