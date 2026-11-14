@@ -108,7 +108,7 @@ levantar el visualizador (`depends_on: condition: service_healthy`).
 
 El visualizador tiene varios modelos que se eligen con los botones del panel
 superior izquierdo: **toro**, **esfera**, **cubo**, **taza**, **taza (nube)** y el
-morph **dona→taza** (ver más abajo). Los tres reciben la misma
+morph **dona→taza** (ver más abajo). Todos reciben la misma
 matriz de la calculadora; al cambiar de modelo la transformación se conserva.
 
 - El toro es una malla cuadrada de su superficie (100×100): las caras salen
@@ -128,8 +128,12 @@ dona y en 1 las de la taza (`taza_3d_10000_puntos.csv`). Los botones **Taza** y
 
 **No es** la interpolación recta `P = (1 − t)·D + t·T` de la diapositiva: con
 esta taza esa fórmula hace que la superficie se atraviese a sí misma (hasta 762
-cruces en t = 0.6). En su lugar el servidor entrega 42 fotogramas, formas
-intermedias válidas, y el navegador interpola entre fotogramas vecinos.
+cruces en t = 0.6). En su lugar hay 42 fotogramas, formas intermedias válidas, y
+la **calculadora** interpola entre fotogramas vecinos:
+
+```
+f = t·(n − 1),   i = ⌊f⌋,   a = f − i,   P(t) = (1 − a)·F[i] + a·F[i + 1]
+```
 
 - Dona → tubo con asa en lazo → taza ajustada a las medidas de la nube: 0 cruces,
   verificados en cada fotograma y en tres puntos entre fotogramas.
@@ -138,17 +142,53 @@ intermedias válidas, y el navegador interpola entre fotogramas vecinos.
   quedan unos cientos de cruces locales pequeños y la superficie se ve áspera en
   vista sólida. Solo se usan ~4 400 puntos distintos de los 10 000 (algunos se
   repiten).
-- `t` se limita a [0, 1]; fuera de ese rango no hay formas intermedias.
+- Todos los fotogramas tienen los mismos 100 × 100 vértices, así que la malla
+  (caras y aristas) es la misma para cualquier `t`.
 
-Los fotogramas se regeneran con (requiere `pip install numpy`; el servicio no lo usa):
+### Quién hace qué
+
+```
+navegador ──{"t": 0.4}──▶ visor /ws/morph ──POST /operaciones/morph──▶ calculadora
+          ◀─ vértices ───                 ◀──────── vértices ─────────
+```
+
+El visor no interpola: reenvía `t` (máx. 25 por segundo) y copia los vértices
+que recibe.
+
+| Endpoint | Servicio | Qué hace |
+|---|---|---|
+| `POST /operaciones/morph` | calculadora | `{t, resolucion}` → vértices. `t` ∈ [0, 1], `resolucion` ∈ [2, 100] (lado de la malla). Fuera de rango, 422 |
+| `POST /figuras` | calculadora | Guarda `{nombre, t, resolucion}`. 201 si la crea; 200 si ya existía igual; 409 si el nombre ya se usó con otros valores o hay 100 figuras |
+| `GET /figuras`, `GET /figuras/{id}` | calculadora | Figuras guardadas |
+| `WS /ws/morph` | visor | Relevo de `t` hacia la calculadora. Solo acepta orígenes de `ORIGENES_PERMITIDOS` |
+| `POST/GET /api/figuras` | visor | Reenvía a `/figuras` de la calculadora |
+
+El nombre de una figura admite letras, números, espacio, punto y guiones, hasta
+40 caracteres, y el visor lo muestra con `textContent`.
+
+```bash
+curl -s -X POST localhost:8010/operaciones/morph -H 'Content-Type: application/json' \
+  -d '{"t":0.5,"resolucion":3}'
+curl -s -X POST localhost:8010/figuras -H 'Content-Type: application/json' \
+  -d '{"nombre":"mitad","t":0.5}'
+```
+
+Los fotogramas se regeneran con (requiere `pip install numpy`; ningún servicio lo usa):
 
 ```bash
 cd modelotoro
-python generar_morph.py     # tarda un par de minutos; se detiene sin escribir si hay cruces
+python generar_morph.py     # escribe ../calculadora_matrices/morph_frames.bin
 ```
 
-`GET /api/morph` da el número de fotogramas y `GET /api/morph/datos` los
-fotogramas en bruto (float32). `verificar_cruces.py` cuenta los cruces de una malla.
+`verificar_cruces.py` cuenta los cruces de una malla.
+
+## Pruebas y análisis estático
+
+```bash
+pip install -r requirements-dev.txt
+pytest          # tests/: calculadora, morph, figuras y relevo del visor
+ruff check .    # reglas en pyproject.toml (E, F, B, S, C90)
+```
 
 ## Comprobar el enlace sin abrir el navegador
 
@@ -220,8 +260,10 @@ toro-calculadora/
 ├── calculadora_matrices/
 │   ├── main.py                  # + multiplicar, multiplicar-cadena, transformacion, health
 │   ├── services.py              # + multiplicar, multiplicar_cadena, matrices T/R/S
-│   ├── models.py                # + MatrixChain, TransformParams
-│   ├── repository.py
+│   ├── models.py                # + MatrixChain, TransformParams, MorphParams, FiguraCreate
+│   ├── repository.py            # + FiguraRepository (idempotente por nombre)
+│   ├── morph.py                 # interpolación del morph dona → taza
+│   ├── morph_frames.bin         # 42 fotogramas dona → taza (generado)
 │   ├── index.html               # interfaz de la calculadora
 │   └── Dockerfile               # corregido
 └── modelotoro/
@@ -234,9 +276,10 @@ toro-calculadora/
     ├── coordenadas_cubo_volumen.csv    # cubo de lado 10: 30 000 puntos del volumen
     ├── taza_3d_10000_puntos.csv        # taza: nube de 10 000 puntos (destino del morph)
     ├── modelo_taza.csv                 # último fotograma del morph (generado)
-    ├── morph_frames.bin                # 42 fotogramas dona → taza (generado)
     ├── generar_morph.py                # genera los fotogramas y verifica que no se crucen
     ├── generar_taza.py                 # familia paramétrica de tazas que usa el generador
     ├── verificar_cruces.py             # cuenta cruces de la superficie consigo misma
     └── Dockerfile               # sin build-essential
+tests/                           # pytest (ver «Pruebas y análisis estático»)
+pyproject.toml                   # configuración de Ruff y pytest
 ```
