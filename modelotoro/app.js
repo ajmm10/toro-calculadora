@@ -52,6 +52,22 @@ function carasDeMalla(n) {
     return indices;
 }
 
+// Aristas de la malla para el alambre. Comparte los vértices de la superficie
+// (mismo atributo `position`), así sigue la deformación durante el morph en
+// lugar de quedarse con una copia de los puntos del toro.
+function aristasDeMalla(n) {
+    const indices = [];
+    for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+            const a = i * n + j;
+            if (j < n - 1) indices.push(a, a + 1);
+            if (i < n - 1) indices.push(a, a + n);
+            if (i < n - 1 && j < n - 1) indices.push(a + 1, a + n);
+        }
+    }
+    return indices;
+}
+
 // Coloca cámara, rejilla y ejes según el radio del modelo
 function encuadrar(radio) {
     if (grid) scene.remove(grid);
@@ -68,22 +84,58 @@ function encuadrar(radio) {
 
 let parts = null;
 
-async function loadModel(nombre) {
+async function pedirModelo(nombre) {
     const res = await fetch(`${API}/model?nombre=${encodeURIComponent(nombre)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail);
-    const { points } = data;
+    return data;
+}
+
+// "morph" no es un modelo del servidor: es la dona deformándose hacia la taza.
+// Este archivo NO interpola nada. El deslizador manda t por el WebSocket
+// /ws/morph, el backend se lo pasa a la calculadora (POST /operaciones/morph)
+// y lo que vuelve son los vértices ya calculados. La malla (caras y aristas)
+// es la del toro para cualquier t, así que solo cambian las posiciones.
+let morphActivo = false;
+let tPendiente = null;     // último t pedido que aún no se ha enviado
+
+function aplicarVertices(vertices) {
+    if (!morphActivo || !parts) return;
+    const pos = parts.dots.geometry.attributes.position;
+    if (vertices.length !== pos.array.length) return;   // llegó tarde, de otro modelo
+    pos.array.set(vertices);
+    pos.needsUpdate = true;
+    if (parts.solid) parts.solid.geometry.computeVertexNormals();
+}
+
+function pedirT(t) {
+    tPendiente = t;
+}
+
+async function loadModel(nombre) {
+    const esMorph = nombre === 'morph';
+    morphActivo = false;
+    // El morph arranca con la malla de la dona; la taza solo se pide para
+    // encuadrar la cámara, porque es bastante más grande.
+    const data = await pedirModelo(esMorph ? 'toro' : nombre);
+    const flat = new Float32Array(data.points.flat());
+    const total = flat.length / 3;
+    document.getElementById('morph-panel').hidden = !esMorph;
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(points.flat()), 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(flat, 3));
     geometry.computeBoundingSphere();
-    const radio = geometry.boundingSphere.radius;
+    let radio = geometry.boundingSphere.radius;
+    if (esMorph) {
+        const taza = await pedirModelo('taza');
+        for (const [x, y, z] of taza.points) radio = Math.max(radio, Math.hypot(x, y, z));
+    }
 
     // Una nube de volumen no tiene caras: solo existe la vista de puntos. La
     // separación entre puntos de un volumen va como 1/∛n, y el tamaño también.
     const nube = !data.grid;
     const dots = new THREE.Points(geometry, new THREE.PointsMaterial({
-        color: 0xffa657, size: nube ? radio * 0.3 / Math.cbrt(points.length) : radio * 0.02,
+        color: 0xffa657, size: nube ? radio * 0.3 / Math.cbrt(total) : radio * 0.02,
     }));
     let solid = null, wire = null;
     if (!nube) {
@@ -92,10 +144,25 @@ async function loadModel(nombre) {
         solid = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
             color: 0x58a6ff, metalness: 0.2, roughness: 0.45, side: THREE.DoubleSide,
         }));
+        const lineas = new THREE.BufferGeometry();
+        lineas.setAttribute('position', geometry.getAttribute('position'));
+        lineas.setIndex(aristasDeMalla(data.grid));
         wire = new THREE.LineSegments(
-            new THREE.WireframeGeometry(geometry),
+            lineas,
             new THREE.LineBasicMaterial({ color: 0x79c0ff, transparent: true, opacity: 0.3 }),
         );
+    }
+
+    // Los puntos con la altura en z (data.z_arriba) se enderezan al "arriba" del
+    // visualizador, que es y, y se centran en el origen. Se hace en los objetos
+    // y no en el grupo `model`, que es el que recibe la matriz de la calculadora.
+    if (data.z_arriba) {
+        geometry.computeBoundingBox();
+        const c = geometry.boundingBox.getCenter(new THREE.Vector3());
+        for (const objeto of [solid, wire, dots].filter(Boolean)) {
+            objeto.rotation.x = -Math.PI / 2;          // (x, y, z) → (x, z, −y)
+            objeto.position.set(-c.x, -c.z, c.y);      // centro ya girado, con signo cambiado
+        }
     }
 
     // Se cambia el contenido del grupo, no el grupo: la matriz de la
@@ -109,9 +176,14 @@ async function loadModel(nombre) {
     parts = { solid, wire, dots, nube };
     encuadrar(radio);
 
+    if (esMorph) {
+        morphActivo = true;
+        pedirT(parseFloat(document.getElementById('t').value));
+    }
+
     const forma = nube ? 'nube de puntos del volumen' : `malla ${data.grid}×${data.grid}`;
-    document.getElementById('titulo').textContent = `Visualizador 3D — ${nombre}`;
-    document.getElementById('info').textContent = `${points.length} vértices · ${forma}`;
+    document.getElementById('titulo').textContent = `Visualizador 3D — ${esMorph ? 'dona → taza' : nombre}`;
+    document.getElementById('info').textContent = `${total} vértices · ${forma}`;
 }
 
 const botonesModelo = [...document.querySelectorAll('button[data-modelo]')];
@@ -119,6 +191,9 @@ async function elegirModelo(nombre) {
     botonesModelo.forEach(b => b.classList.toggle('on', b.dataset.modelo === nombre));
     try {
         await loadModel(nombre);
+        // La taza y el morph se leen mal como nube de puntos: abren en sólido.
+        if (nombre === 'taza' || nombre === 'morph') modeIdx = modes.findIndex(m => m[0] === 'sólido');
+        else if (nombre === 'toro') modeIdx = 0;
         applyMode();
     } catch (e) {
         document.getElementById('info').innerHTML = `<b class="bad">No se pudo cargar ${nombre}</b>: ${e.message}`;
@@ -149,8 +224,80 @@ function applyMode() {
     for (const k in vis) parts[k].visible = vis[k];
     boton.textContent = `Vista: ${name}`;
 }
+// Control del morph: el deslizador y la animación de ida y vuelta
+const tSlider = document.getElementById('t');
+const tOut = document.getElementById('t-out');
+tSlider.addEventListener('input', () => {
+    tOut.textContent = parseFloat(tSlider.value).toFixed(2);
+    pedirT(parseFloat(tSlider.value));
+});
+let animandoMorph = false;
+document.getElementById('morph-anim').onclick = (e) => {
+    animandoMorph = !animandoMorph;
+    e.target.classList.toggle('on', animandoMorph);
+};
+// Figuras guardadas: un t con nombre. Las guarda la calculadora; el visor solo
+// las reenvía. El nombre se pinta con textContent, nunca como HTML.
+const figuraNombre = document.getElementById('figura-nombre');
+const figuraInput = document.getElementById('figura-input');
+const figuraLista = document.getElementById('figura-lista');
+const figuraEstado = document.getElementById('figura-estado');
+let figuras = [];
+
+function ponerT(t) {
+    tSlider.value = t;
+    tOut.textContent = parseFloat(tSlider.value).toFixed(2);
+    pedirT(parseFloat(tSlider.value));
+}
+
+async function cargarFiguras() {
+    const res = await fetch(`${API}/api/figuras`);
+    if (!res.ok) return;
+    figuras = await res.json();
+    figuraLista.replaceChildren(new Option('Figuras guardadas…', ''));
+    for (const f of figuras) figuraLista.add(new Option(`${f.nombre} (t = ${f.t.toFixed(2)})`, f.id));
+}
+
+document.getElementById('figura-guardar').onclick = async () => {
+    const nombre = figuraInput.value.trim();
+    if (!nombre) return;
+    const res = await fetch(`${API}/api/figuras`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, t: parseFloat(tSlider.value), resolucion: 100 }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        const detalle = Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail;
+        figuraEstado.className = 'bad';
+        figuraEstado.textContent = `No se guardó: ${detalle}`;
+        return;
+    }
+    figuraNombre.textContent = data.nombre;
+    figuraEstado.className = 'dim';
+    figuraEstado.textContent = res.status === 201 ? 'Guardada.' : 'Ya estaba guardada.';
+    await cargarFiguras();
+};
+
+figuraLista.onchange = () => {
+    const f = figuras.find(x => String(x.id) === figuraLista.value);
+    if (!f) return;
+    figuraNombre.textContent = f.nombre;
+    ponerT(f.t);
+};
+
+// Mover el deslizador deja de ser la figura guardada
+tSlider.addEventListener('input', () => { figuraNombre.textContent = 'sin nombre'; });
+
+// ?modelo=morph&t=0.7 abre el morph ya en ese punto
+const tInicial = parseFloat(new URLSearchParams(location.search).get('t'));
+if (!Number.isNaN(tInicial)) {
+    tSlider.value = tInicial;
+    tOut.textContent = parseFloat(tSlider.value).toFixed(2);
+}
 // ?modelo=esfera abre directamente otro modelo
 await elegirModelo(new URLSearchParams(location.search).get('modelo') ?? 'toro');
+cargarFiguras();
 document.getElementById('mode').onclick = () => { modeIdx = (modeIdx + 1) % modes.length; applyMode(); };
 
 // ---------------------------------------------------------------------------
@@ -227,6 +374,28 @@ function connect() {
 }
 connect();
 
+// Segundo WebSocket, solo para el morph: manda t y recibe los vértices que
+// calculó la calculadora.
+const morphEl = document.getElementById('morph-estado');
+let wsMorph;
+function conectarMorph() {
+    wsMorph = new WebSocket(API.replace(/^http/, 'ws') + '/ws/morph');
+    wsMorph.onopen = () => { if (morphActivo) pedirT(parseFloat(tSlider.value)); };
+    wsMorph.onclose = () => setTimeout(conectarMorph, 1500);
+    wsMorph.onmessage = (event) => {
+        const res = JSON.parse(event.data);
+        if (res.origen === 'error') {
+            morphEl.className = 'bad';
+            morphEl.textContent = `Morph: ${res.error}`;
+            return;
+        }
+        aplicarVertices(res.vertices);
+        morphEl.className = 'dim';
+        morphEl.textContent = `Morph: calculadora · t = ${res.t.toFixed(2)} · ${res.count} vértices`;
+    };
+}
+conectarMorph();
+
 // ---------------------------------------------------------------------------
 // Bucle de render
 //
@@ -237,6 +406,7 @@ connect();
 // ---------------------------------------------------------------------------
 const INTERVALO_MS = 40;
 let ultimoEnvio = 0;
+let ultimoEnvioMorph = 0;   // el morph va limitado igual: 25 t por segundo
 let t = 0;
 
 function animate(ahora) {
@@ -255,10 +425,25 @@ function animate(ahora) {
         dirty = true;
     }
 
+    if (animandoMorph && morphActivo) {
+        // vaivén suave 0 → 1 → 0 cada ~6 s
+        const v = (1 - Math.cos(ahora / 1000 * Math.PI / 3)) / 2;
+        tSlider.value = v;
+        tOut.textContent = v.toFixed(2);
+        pedirT(v);
+    }
+
     if (dirty && ws.readyState === WebSocket.OPEN && ahora - ultimoEnvio >= INTERVALO_MS) {
         ws.send(JSON.stringify(params));
         dirty = false;
         ultimoEnvio = ahora;
+    }
+
+    if (tPendiente !== null && wsMorph.readyState === WebSocket.OPEN
+        && ahora - ultimoEnvioMorph >= INTERVALO_MS) {
+        wsMorph.send(JSON.stringify({ t: tPendiente }));
+        tPendiente = null;
+        ultimoEnvioMorph = ahora;
     }
 
     controls.update();

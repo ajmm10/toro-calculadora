@@ -4,11 +4,19 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
-from models import MatrixChain, MatrixCreate, TransformParams
-from repository import MatrixRepository, RepositorioLleno
+import morph
 import services
+from models import (
+    FiguraCreate,
+    FiguraOut,
+    MatrixChain,
+    MatrixCreate,
+    MorphParams,
+    TransformParams,
+)
+from repository import FiguraRepository, MatrixRepository, NombreEnUso, RepositorioLleno
 
 app = FastAPI(title="Calculadora de Matrices")
 
@@ -61,6 +69,7 @@ app.add_middleware(
 )
 
 repo = MatrixRepository()
+figuras = FiguraRepository()
 
 
 @app.get("/")
@@ -165,3 +174,56 @@ def determinante_matriz(id: int):
         return {"resultado": services.determinante(m["datos"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+# --- Morph dona → taza -------------------------------------------------------
+# La matemática del morph vive aquí, no en el visualizador: el visor solo
+# reenvía t y dibuja los vértices que recibe.
+
+
+@app.post("/operaciones/morph")
+def operacion_morph(payload: MorphParams):
+    """Vértices de la forma intermedia entre la dona (t = 0) y la taza (t = 1).
+
+    Devuelve una malla de `resolucion` × `resolucion` vértices; la cantidad es
+    la misma para cualquier t, así que el cliente puede reutilizar sus caras.
+    No guarda nada en el repositorio.
+    """
+    return {
+        "t": payload.t,
+        "resolucion": payload.resolucion,
+        "fotogramas": morph.FOTOGRAMAS,
+        "count": payload.resolucion ** 2,
+        "vertices": morph.vertices(payload.t, payload.resolucion),
+    }
+
+
+@app.post("/figuras", response_model=FiguraOut, status_code=201)
+def guardar_figura(payload: FiguraCreate):
+    """Guarda una forma del morph con nombre.
+
+    Idempotente: si la misma figura (nombre, t y resolucion) ya existe, se
+    devuelve la existente con 200. El mismo nombre con otros valores da 409.
+    """
+    try:
+        figura, creada = figuras.guardar(payload.model_dump())
+    except NombreEnUso as e:
+        raise HTTPException(409, str(e)) from e
+    except RepositorioLleno as e:
+        raise HTTPException(409, str(e)) from e
+    if not creada:
+        return JSONResponse(figura, status_code=200)
+    return figura
+
+
+@app.get("/figuras", response_model=list[FiguraOut])
+def listar_figuras():
+    return figuras.listar()
+
+
+@app.get("/figuras/{id}", response_model=FiguraOut)
+def obtener_figura(id: int):
+    figura = figuras.obtener(id)
+    if not figura:
+        raise HTTPException(404, "figura no encontrada")
+    return figura
