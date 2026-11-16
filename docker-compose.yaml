@@ -1,36 +1,36 @@
-# Levanta los dos servicios en una sola red interna.
+# Levanta los dos servicios en una sola red interna, cada uno en su puerto.
 #
-#   calculadora   API de matrices           http://localhost:8010
-#   visualizador  toro 3D + WebSocket       http://localhost:8012
+#   calculadora   API de matrices y morph          http://localhost:8001  (/docs)
+#   modelo-3d     visor 3D + WebSocket             http://localhost:8000/view
 #
-# El visualizador alcanza a la calculadora por el nombre del servicio
-# (http://calculadora:8000), no por localhost: dentro de un contenedor
+# El visor alcanza a la calculadora por el nombre del servicio
+# (http://calculadora:8001), no por localhost: dentro de un contenedor
 # "localhost" es el contenedor mismo.
 
 services:
   calculadora:
     build: ./calculadora_matrices
-    container_name: calculadora-matrices
+    container_name: calculadora
     ports:
-      - "8010:8000"
+      - "8001:8001"
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3).status == 200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     networks: [matrices-net]
 
-  visualizador:
+  modelo-3d:
     build: ./modelotoro
-    container_name: visualizador-toro
+    container_name: modelo-3d
     ports:
-      - "8012:8000"
+      - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
-      - CALCULADORA_URL=http://calculadora:8000
+      - CALCULADORA_URL=http://calculadora:8001
     depends_on:
       calculadora:
         condition: service_healthy

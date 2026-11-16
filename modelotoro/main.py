@@ -32,7 +32,8 @@ app = FastAPI(title="Visualizador 3D — modelos conectados a la calculadora")
 ORIGENES_PERMITIDOS = [
     o.strip().rstrip("/")
     for o in os.getenv(
-        "ORIGENES_PERMITIDOS", "http://localhost:8010,http://localhost:8012"
+        "ORIGENES_PERMITIDOS",
+        "http://localhost:8000,http://localhost:8001,http://127.0.0.1:8000,http://127.0.0.1:8001",
     ).split(",")
     if o.strip()
 ]
@@ -78,8 +79,8 @@ async def cabeceras_seguridad(request: Request, call_next):
 app.mount("/vendor", StaticFiles(directory=BASE_DIR / "vendor"), name="vendor")
 
 # Dentro de docker compose, "calculadora" es el nombre del servicio en la red
-# interna. Fuera de Docker se sobreescribe con http://localhost:8000.
-CALCULADORA_URL = os.getenv("CALCULADORA_URL", "http://calculadora:8000").rstrip("/")
+# interna. Fuera de Docker se sobreescribe con http://localhost:8001.
+CALCULADORA_URL = os.getenv("CALCULADORA_URL", "http://calculadora:8001").rstrip("/")
 ENDPOINT_TRANSFORMACION = f"{CALCULADORA_URL}/operaciones/transformacion"
 
 
@@ -139,6 +140,7 @@ def a_columnas(m: list[list[float]]) -> list[float]:
 
 
 @app.get("/")
+@app.get("/view")
 def index():
     return FileResponse(BASE_DIR / "index.html")
 
