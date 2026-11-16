@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 RAIZ = Path(__file__).resolve().parents[1]
-ORIGEN = "http://localhost:8012"
+ORIGEN = "http://localhost:8000"
 
 
 def cargar_visor():

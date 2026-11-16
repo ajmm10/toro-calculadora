@@ -174,9 +174,9 @@ El nombre de una figura admite letras, números, espacio, punto y guiones, hasta
 40 caracteres, y el visor lo muestra con `textContent`.
 
 ```bash
-curl -s -X POST localhost:8010/operaciones/morph -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8001/operaciones/morph -H 'Content-Type: application/json' \
   -d '{"t":0.5,"resolucion":3}'
-curl -s -X POST localhost:8010/figuras -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8001/figuras -H 'Content-Type: application/json' \
   -d '{"nombre":"mitad","t":0.5}'
 ```
 
