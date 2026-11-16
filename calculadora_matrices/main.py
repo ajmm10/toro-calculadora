@@ -56,7 +56,8 @@ async def cabeceras_seguridad(request: Request, call_next):
 ORIGENES_PERMITIDOS = [
     o.strip().rstrip("/")
     for o in os.getenv(
-        "ORIGENES_PERMITIDOS", "http://localhost:8010,http://localhost:8012"
+        "ORIGENES_PERMITIDOS",
+        "http://localhost:8000,http://localhost:8001,http://127.0.0.1:8000,http://127.0.0.1:8001",
     ).split(",")
     if o.strip()
 ]
